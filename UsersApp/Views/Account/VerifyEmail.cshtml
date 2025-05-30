@@ -1,0 +1,116 @@
+﻿@using UsersApp.ViewModels
+@model VerifyEmailViewModel
+
+@{
+    ViewData["Title"] = "Verify Email";
+   
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Verify Email - Easy Commute</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+        body {
+            background: url('/images/map.png') no-repeat center center fixed;
+            background-size: cover;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .form-wrapper {
+            background-color: rgba(0, 51, 102, 0.85);
+            width: 420px;
+            margin: 80px auto;
+            padding: 30px;
+            border-radius: 15px;
+            color: white;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+            .form-wrapper h3 {
+                text-align: center;
+                font-weight: bold;
+                font-size: 20px;
+                margin-bottom: 20px;
+            }
+
+        label {
+            font-weight: bold;
+            font-size: 14px;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 10px 14px;
+            border: none;
+            border-radius: 20px;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .text-danger {
+            font-size: 13px;
+            color: #ffc0cb;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .btn-submit {
+            width: 100%;
+            background-color: #2563eb;
+            padding: 10px;
+            border: none;
+            color: white;
+            font-weight: bold;
+            font-size: 15px;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+
+            .btn-submit:hover {
+                background-color: #1e40af;
+            }
+
+        .back-link, .back-link a {
+            text-align: center;
+            margin-top: 15px;
+            color: #fff;
+            font-size: 14px;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="form-wrapper">
+        <h3>Verify Your Email</h3>
+
+        <form asp-action="VerifyEmail" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="form-group">
+                <label asp-for="Email"></label>
+                <input asp-for="Email" class="form-control" />
+                <span asp-validation-for="Email" class="text-danger"></span>
+            </div>
+
+            <button type="submit" class="btn-submit">Verify Email</button>
+
+            <div class="back-link">
+                <a asp-controller="Home" asp-action="Index">Back</a>
+            </div>
+        </form>
+    </div>
+
+    @section Scripts {
+        @await Html.PartialAsync("_ValidationScriptsPartial")
+    }
+</body>
+</html>

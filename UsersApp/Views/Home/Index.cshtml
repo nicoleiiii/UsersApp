@@ -1,0 +1,94 @@
+﻿@{
+    ViewData["Title"] = "Home";
+}
+
+<style>
+    .main-header {
+        font-family: 'Arial Black', sans-serif;
+        font-size: 2.8rem;
+        color: #1F51FF;
+        font-weight: 900;
+        text-align: center;
+        margin-top: 40px;
+    }
+
+    .subtext {
+        font-family: 'Segoe UI', sans-serif;
+        font-size: 1.1rem;
+        text-align: center;
+        margin: 20px auto;
+        max-width: 720px;
+        color: #1f2937;
+        line-height: 1.6;
+    }
+
+    .cta-section {
+        display: flex;
+        justify-content: center;
+        margin-top: 20px;
+    }
+
+    .cta-button {
+        background-color: #2563eb;
+        color: white;
+        font-weight: bold;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 6px;
+        transition: background-color 0.3s ease;
+    }
+
+        .cta-button:hover {
+            background-color: #1e40af;
+            cursor: pointer;
+        }
+
+    .carousel {
+        max-width: 1000px;
+        margin: 40px auto;
+    }
+
+    .carousel-inner img {
+        width: 100%;
+        height: auto;
+        border-radius: 20px;
+    }
+</style>
+
+<div class="main-header">
+    Easy Commute
+</div>
+
+<p class="subtext">
+    Navigate Angeles City with ease. We provide clear routes to your destination, show your local
+    transport options, and give you fare estimates. Plan your stress-free journey here!
+</p>
+
+<!-- Combined Image Carousel Section -->
+<div id="commuteCarousel" class="carousel slide carousel-fade" data-bs-ride="carousel">
+    <div class="carousel-inner">
+        <div class="carousel-item active">
+            <img src="~/images/1.webp" class="d-block w-100" alt="Map of Angeles City">
+        </div>
+        <div class="carousel-item">
+            <img src="~/images/2.webp" class="d-block w-100" alt="Slide 1">
+        </div>
+        <div class="carousel-item">
+            <img src="~/images/3.webp" class="d-block w-100" alt="Slide 2">
+        </div>
+    </div>
+    <button class="carousel-control-prev" type="button" data-bs-target="#commuteCarousel" data-bs-slide="prev">
+        <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+        <span class="visually-hidden">Previous</span>
+    </button>
+    <button class="carousel-control-next" type="button" data-bs-target="#commuteCarousel" data-bs-slide="next">
+        <span class="carousel-control-next-icon" aria-hidden="true"></span>
+        <span class="visually-hidden">Next</span>
+    </button>
+</div>
+
+<div class="cta-section">
+    <a href="@Url.Action("Register", "Account")">
+        <button class="cta-button">Plan Your Route Now</button>
+    </a>
+</div>

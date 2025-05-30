@@ -1,0 +1,1016 @@
+﻿@{
+    ViewBag.Title = "Jeepney Route Planner – Angeles City";
+    
+}
+
+<style>
+    html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+        font-family: 'Arial', sans-serif;
+    }
+
+    #map {
+        position: absolute;
+        top: 50px;
+        left: 0;
+        width: 100vw;
+        height: calc(100vh - 50px);
+    }
+
+    .nav-bar {
+        position: absolute;
+        top: 50px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 8px 12px;
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        width: auto;
+        max-width: 80%;
+    }
+
+    .route-dropdown {
+        position: relative;
+        display: inline-block;
+    }
+
+    .route-dropbtn, .show-all-routes-btn {
+        background-color: #4CAF50;
+        color: white;
+        padding: 6px 10px;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 12px;
+        min-width: 160px;
+        text-align: center;
+        text-transform: uppercase;
+    }
+
+    .show-all-routes-btn {
+        background-color: #3498DB;
+    }
+
+    .route-dropdown-content {
+        display: none;
+        position: absolute;
+        background-color: #f9f9f9;
+        min-width: 160px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        border-radius: 3px;
+        z-index: 1;
+        max-height: 50vh;
+        overflow-y: auto;
+        font-size: 11px;
+    }
+
+        .route-dropdown-content a {
+            color: #333;
+            padding: 6px 8px;
+            text-decoration: none;
+            display: block;
+            border-bottom: 1px solid #eee;
+            text-transform: uppercase;
+        }
+
+            .route-dropdown-content a:hover {
+                background-color: #f1f1f1;
+            }
+
+    .route-dropdown:hover .route-dropdown-content {
+        display: block;
+    }
+
+    .search-container {
+        display: flex;
+    }
+
+    .search-input {
+        padding: 6px 8px;
+        border: 1px solid #ddd;
+        border-radius: 3px 0 0 3px;
+        width: 140px;
+        font-size: 12px;
+    }
+
+    .search-btn {
+        background-color: #3498DB;
+        color: white;
+        border: none;
+        padding: 6px 10px;
+        border-radius: 0 3px 3px 0;
+        cursor: pointer;
+        font-size: 12px;
+        text-transform: uppercase;
+    }
+
+    .leaflet-routing-container {
+        position: absolute;
+        top: 50px !important;
+        left: 10px !important;
+        background: white;
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        max-height: 60vh;
+        overflow-y: auto;
+        z-index: 1000;
+    }
+
+    .jeepney-stop {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 2px solid white;
+    }
+
+    .stop-info-window {
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    .toggle-routing-btn {
+        position: absolute;
+        top: 50px;
+        left: 10px;
+        z-index: 1000;
+        background-color: #2c3e50;
+        color: white;
+        padding: 6px 10px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 13px;
+        border: none;
+    }
+</style>
+
+<div id="map"></div>
+
+<div class="nav-bar">
+    <div class="route-dropdown">
+        <button class="route-dropbtn">Select Route</button>
+        <div class="route-dropdown-content" id="routeDropdown"></div>
+    </div>
+    <button class="show-all-routes-btn" id="showAllRoutes">Show All Routes</button>
+    <div id="travel-time-info" style="
+    position: absolute;
+    top: 70px;
+    right: 100px;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 5px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    z-index: 1000;
+    pointer-events: none;
+    box-shadow: 0 0 6px rgba(0,0,0,0.3);
+    ">
+        Estimated travel time: --
+    </div>
+
+</div>
+
+@section Scripts {
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    <script src="https://unpkg.com/leaflet-control-geocoder@1.13.0/dist/Control.Geocoder.js"></script>
+
+    <script>
+
+        const map = L.map('map').setView([15.1461, 120.5862], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        let userLocation = null;
+        let userMarker = null;
+        let currentRouteControl = null;
+        let currentStopMarkers = [];
+        let currentJeepneyRoute = null;
+        let allRoutesVisible = false;
+
+        // Update user location on the map live
+        function updateUserLocation(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            userLocation = L.latLng(lat, lng);
+
+            if (userMarker) {
+                userMarker.setLatLng(userLocation);
+            } else {
+                userMarker = L.marker(userLocation).addTo(map).bindPopup("Your Location").openPopup();
+            }
+        }
+
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(updateUserLocation, console.error, {
+                enableHighAccuracy: true,
+                maximumAge: 3000,
+                timeout: 5000
+            });
+        } else {
+            alert("Geolocation is not supported by this browser.");
+        }
+
+        // Jeepney routes data
+        const jeepneyRoutes = {
+            route1: {
+                name: 'CHECKPOINT - HOLY - HIGHWAY',
+                color: '#8989ff',
+                stops: [
+                    { coords: [15.167006901203443, 120.58024589384964], name: "Highway Terminal" },
+                    { coords: [15.169211072949222, 120.58672409299668], name: "Angeles City Hall" },
+
+                    { coords: [15.145672012798867, 120.59505699974206], name: "AUF" },
+                    { coords: [15.142969755171078, 120.59654645333279], name: "SM Clark" },
+
+                    { coords: [15.135525960739505, 120.59108999974201], name: "Nepo Mart" },
+                    { coords: [15.137207403941055, 120.58649353798722], name: "Holy Family Hospital" },
+                    { coords: [15.15188361290154, 120.59154527088677], name: "Checkpoint Terminal" }
+                ]
+            },
+            route2: {
+                name: 'HOLY - HIGHWAY - CHECKPOINT',
+                color: '#8989ff',
+                stops: [
+                    { coords: [15.15188361290154, 120.59154527088677], name: "Checkpoint Terminal" },
+                    { coords: [15.137207403941055, 120.58649353798722], name: "Holy Family Hospital" },
+                    { coords: [15.135525960739505, 120.59108999974201], name: "Nepo Mart" },
+
+
+                    { coords: [15.142969755171078, 120.59654645333279], name: "SM Clark" },
+                    { coords: [15.14600536888183, 120.59499804636928], name: "AUF" },
+
+
+                    { coords: [15.169211072949222, 120.58672409299668], name: "Angeles City Hall" },
+                    { coords: [15.167006901203443, 120.58024589384964], name: "Highway Terminal" }
+                ]
+            },
+            route3: {
+                name: 'MARISOL - PAMPANG',
+                color: '#2ECC71',
+                stops: [
+                    { coords: [15.14633009192624, 120.5862477191313], name: "Marisol Market" },
+                    { coords: [15.145002672202887, 120.58865748276394], name: "Pampang Public Market" },
+                    { coords: [15.137207403941055, 120.58649353798722], name: "Holy Family Hospital" },
+                    { coords: [15.135525960739505, 120.59108999974201], name: "Nepo Mart" },
+                    { coords: [15.142969755171078, 120.59654645333279], name: "SM Clark" },
+                    { coords: [15.15147432369383, 120.59247926682382], name: "Pampang Terminal" }
+                ]
+            },
+            route4: {
+                name: 'PAMPANG - MARISOL',
+                color: '#2ECC71',
+                stops: [
+                    { coords: [15.14633009192624, 120.5862477191313], name: "Marisol Market" },
+                    { coords: [15.145002672202887, 120.58865748276394], name: "Pampang Public Market" },
+                    { coords: [15.137207403941055, 120.58649353798722], name: "Holy Family Hospital" },
+                    { coords: [15.135525960739505, 120.59108999974201], name: "Nepo Mart" },
+                    { coords: [15.142969755171078, 120.59654645333279], name: "SM Clark" },
+                    { coords: [15.15147432369383, 120.59247926682382], name: "Pampang Terminal" }
+                ]
+            },
+            route5: {
+                name: 'CAPAYA - ANGELES',
+                color: '#ff70ff',
+                stops: [
+                    { coords: [15.146434327397694, 120.61411245333282], name: "Capaya Terminal" },
+                    { coords: [15.149997736260357, 120.61456576080549], name: "Capaya Market" },
+                    { coords: [15.153667022280391, 120.60473375649342], name: "Angeles University" },
+                    { coords: [15.143874830417802, 120.59719751184646], name: "Robinsons Angeles" },
+                    { coords: [15.142969755171078, 120.59654645333279], name: "SM Clark" },
+                    { coords: [15.136039207178353, 120.59145771972271], name: "Nepo Center" },
+                    { coords: [15.1380213351689, 120.58883404035532], name: "Pampang Crossing" },
+                    { coords: [15.137224186875072, 120.58647380915083], name: "Holy Family Hospital" },
+                    { coords: [15.137866759917497, 120.5886299110055], name: "Angeles City Proper" }
+                ]
+            }
+
+        };
+
+        // Create custom jeepney stop markers
+        function createJeepneyStopMarker(stop, routeColor, index) {
+            return L.circleMarker(stop.coords, {
+                radius: 8,
+                fillColor: routeColor,
+                color: '#fff',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.9
+            }).bindPopup(`
+                                        <div class="stop-info-window">
+                                            <b>${routeColor ? currentJeepneyRoute.name : 'Jeepney Stop'}</b><br>
+                                            <b>Stop ${index + 1}:</b> ${stop.name}<br>
+                                            <small>Lat: ${stop.coords[0].toFixed(6)}</small><br>
+                                            <small>Lng: ${stop.coords[1].toFixed(6)}</small>
+                                        </div>
+                                    `);
+        }
+
+        // Helper function: find nearest stop to user location
+        function findNearestStop(userLatLng, stops) {
+            let minDistance = Infinity;
+            let nearest = null;
+            let nearestIndex = -1;
+
+            stops.forEach((stop, index) => {
+                const stopLatLng = L.latLng(stop.coords[0], stop.coords[1]);
+                const dist = userLatLng.distanceTo(stopLatLng);
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    nearest = stop;
+                    nearestIndex = index;
+                }
+            });
+
+            return { stop: nearest, index: nearestIndex };
+        }
+
+        // Helper function: find nearest stop to destination
+        function findNearestStopToDestination(destinationLatLng) {
+            let closestRoute = null;
+            let closestStop = null;
+            let minDistance = Infinity;
+            let closestStopIndex = -1;
+
+            // Find the closest stop across all routes to the destination
+            Object.keys(jeepneyRoutes).forEach(routeKey => {
+                const route = jeepneyRoutes[routeKey];
+                route.stops.forEach((stop, index) => {
+                    const stopLatLng = L.latLng(stop.coords[0], stop.coords[1]);
+                    const dist = destinationLatLng.distanceTo(stopLatLng);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        closestRoute = route;
+                        closestStop = stop;
+                        closestStopIndex = index;
+                    }
+                });
+            });
+
+            return { route: closestRoute, stop: closestStop, index: closestStopIndex };
+        }
+
+        // Clear all routes and markers from the map
+        function clearMap() {
+            if (currentRouteControl) {
+                map.removeControl(currentRouteControl);
+                currentRouteControl = null;
+            }
+            currentStopMarkers.forEach(marker => map.removeLayer(marker));
+            currentStopMarkers = [];
+        }
+
+        // Load and display jeepney route with all stops marked
+        function loadJeepneyRoute(routeKey) {
+            clearMap();
+            allRoutesVisible = false;
+
+            const route = jeepneyRoutes[routeKey];
+            currentJeepneyRoute = route;
+
+            // Update dropdown button text
+            document.querySelector('.route-dropbtn').textContent = route.name.toUpperCase();
+
+            // Create markers for all stops
+            route.stops.forEach((stop, index) => {
+                const marker = createJeepneyStopMarker(stop, route.color, index).addTo(map);
+                currentStopMarkers.push(marker);
+            });
+
+            // Create the jeepney route line
+            const jeepneyLineControl = L.Routing.control({
+                waypoints: route.stops.map(stop => L.latLng(stop.coords[0], stop.coords[1])),
+                routeWhileDragging: false,
+                showAlternatives: false,
+                fitSelectedRoutes: true,
+                show: false, // Hide the instructions panel
+                addWaypoints: false,
+                draggableWaypoints: false,
+                lineOptions: {
+                    styles: [{ color: route.color, opacity: 0.8, weight: 6 }]
+                },
+                createMarker: () => null // Don't create default markers
+            });
+
+            // If user location is available, create route from user to nearest stop
+            if (userLocation) {
+                const { stop: nearestStop, index: nearestIndex } = findNearestStop(userLocation, route.stops);
+                const nearestLatLng = L.latLng(nearestStop.coords[0], nearestStop.coords[1]);
+
+                // Create route from user to nearest stop
+                const toStopRoute = L.Routing.control({
+                    waypoints: [userLocation, nearestLatLng],
+                    routeWhileDragging: false,
+                    showAlternatives: false,
+                    fitSelectedRoutes: false,
+                    addWaypoints: false,
+                    draggableWaypoints: false,
+                    lineOptions: {
+                        styles: [{ color: '#FF5733', weight: 4, opacity: 0.8, dashArray: '5,10' }]
+                    },
+                    createMarker: function (i, waypoint, n) {
+                        if (i === 0) {
+                            return L.marker(waypoint.latLng).bindPopup("Your Location");
+                        }
+                        return null; // Don't create marker for the stop (we already have it)
+                    }
+                });
+
+                // Create route from nearest stop to the end of the jeepney route
+                const remainingStops = route.stops.slice(nearestIndex);
+                const remainingWaypoints = remainingStops.map(stop => L.latLng(stop.coords[0], stop.coords[1]));
+
+                const jeepneyRoute = L.Routing.control({
+                    waypoints: remainingWaypoints,
+                    routeWhileDragging: false,
+                    showAlternatives: false,
+                    fitSelectedRoutes: false,
+                    show: false,
+                    addWaypoints: false,
+                    draggableWaypoints: false,
+                    lineOptions: {
+                        styles: [{ color: route.color, opacity: 0.8, weight: 6 }]
+                    },
+                    createMarker: () => null
+                });
+
+                // Combine both routes for easy removal
+                currentRouteControl = {
+                    remove: () => {
+                        toStopRoute.remove();
+                        jeepneyRoute.remove();
+                        jeepneyLineControl.remove();
+                    }
+                };
+
+                toStopRoute.addTo(map);
+                jeepneyRoute.addTo(map);
+                jeepneyLineControl.addTo(map);
+
+                // Fit bounds to show both routes
+                const allPoints = [userLocation, ...remainingWaypoints];
+                const bounds = L.latLngBounds(allPoints);
+                map.fitBounds(bounds.pad(0.1));
+            } else {
+                // Just show the jeepney route if no user location
+                currentRouteControl = jeepneyLineControl;
+                jeepneyLineControl.addTo(map);
+
+                // Fit to route bounds
+                const bounds = L.latLngBounds(route.stops.map(stop => stop.coords));
+                map.fitBounds(bounds.pad(0.1));
+            }
+        }
+
+        // Show all jeepney routes on the map
+        function showAllRoutes() {
+            clearMap();
+            allRoutesVisible = true;
+
+            // Create markers and lines for all routes
+            Object.keys(jeepneyRoutes).forEach(routeKey => {
+                const route = jeepneyRoutes[routeKey];
+
+                // Create markers for all stops
+                route.stops.forEach((stop, index) => {
+                    const marker = createJeepneyStopMarker(stop, route.color, index).addTo(map);
+                    currentStopMarkers.push(marker);
+                });
+
+                // Create the jeepney route line
+                const jeepneyLineControl = L.Routing.control({
+                    waypoints: route.stops.map(stop => L.latLng(stop.coords[0], stop.coords[1])),
+                    routeWhileDragging: false,
+                    showAlternatives: false,
+                    fitSelectedRoutes: false,
+                    show: false,
+                    addWaypoints: false,
+                    draggableWaypoints: false,
+                    lineOptions: {
+                        styles: [{ color: route.color, opacity: 0.6, weight: 4 }]
+                    },
+                    createMarker: () => null
+                }).addTo(map);
+
+                currentRouteControl = jeepneyLineControl;
+            });
+
+            // Fit to show all routes
+            const allStops = Object.values(jeepneyRoutes).flatMap(route => route.stops.map(stop => stop.coords));
+            const bounds = L.latLngBounds(allStops);
+            map.fitBounds(bounds.pad(0.1));
+        }
+
+        // Route from user location to destination using jeepney routes
+        function routeToDestination(destinationLatLng, destinationName) {
+            clearMap();
+            allRoutesVisible = false;
+
+            // Find nearest jeepney stop to destination
+            const { route: destRoute, stop: destStop, index: destIndex } = findNearestStopToDestination(destinationLatLng);
+
+            if (!destRoute || !destStop) {
+                alert("No jeepney route found near the destination");
+                return;
+            }
+
+            currentJeepneyRoute = destRoute;
+            document.querySelector('.route-dropbtn').textContent = destRoute.name.toUpperCase();
+
+            // Create markers for all stops on this route
+            destRoute.stops.forEach((stop, index) => {
+                const marker = createJeepneyStopMarker(stop, destRoute.color, index).addTo(map);
+                currentStopMarkers.push(marker);
+            });
+
+            // If user location is available
+            if (userLocation) {
+                // Find nearest stop to user on this route
+                const { stop: userStop, index: userIndex } = findNearestStop(userLocation, destRoute.stops);
+                const userStopLatLng = L.latLng(userStop.coords[0], userStop.coords[1]);
+
+                // Create route from user to nearest stop (walking)
+                const toStopRoute = L.Routing.control({
+                    waypoints: [userLocation, userStopLatLng],
+                    routeWhileDragging: false,
+                    showAlternatives: false,
+                    fitSelectedRoutes: false,
+                    addWaypoints: false,
+                    draggableWaypoints: false,
+                    lineOptions: {
+                        styles: [{ color: '#FF5733', weight: 4, opacity: 0.8, dashArray: '5,10' }]
+                    },
+                    createMarker: function (i, waypoint, n) {
+                        if (i === 0) {
+                            return L.marker(waypoint.latLng).bindPopup("Your Location");
+                        }
+                        return null;
+                    }
+                });
+
+                // Create route from user's nearest stop to destination's nearest stop (jeepney route)
+                const jeepneyStops = destRoute.stops.slice(userIndex, destIndex + 1);
+                const jeepneyWaypoints = jeepneyStops.map(stop => L.latLng(stop.coords[0], stop.coords[1]));
+
+                const jeepneyRoute = L.Routing.control({
+                    waypoints: jeepneyWaypoints,
+                    routeWhileDragging: false,
+                    showAlternatives: false,
+                    fitSelectedRoutes: false,
+                    show: false,
+                    addWaypoints: false,
+                    draggableWaypoints: false,
+                    lineOptions: {
+                        styles: [{ color: destRoute.color, opacity: 0.8, weight: 6 }]
+                    },
+                    createMarker: () => null
+                });
+
+                // Create route from destination's nearest stop to actual destination (walking)
+                const destStopLatLng = L.latLng(destStop.coords[0], destStop.coords[1]);
+                const toDestRoute = L.Routing.control({
+                    waypoints: [destStopLatLng, destinationLatLng],
+                    routeWhileDragging: false,
+                    showAlternatives: false,
+                    fitSelectedRoutes: false,
+                    addWaypoints: false,
+                    draggableWaypoints: false,
+                    lineOptions: {
+                        styles: [{ color: '#FF5733', weight: 4, opacity: 0.8, dashArray: '5,10' }]
+                    },
+                    createMarker: function (i, waypoint, n) {
+                        if (i === 1) {
+                            return L.marker(waypoint.latLng).bindPopup(destinationName);
+                        }
+                        return null;
+                    }
+                });
+
+                // Combine all routes for easy removal
+                currentRouteControl = {
+                    remove: () => {
+                        toStopRoute.remove();
+                        jeepneyRoute.remove();
+                        toDestRoute.remove();
+                    }
+                };
+
+                toStopRoute.addTo(map);
+                jeepneyRoute.addTo(map);
+                toDestRoute.addTo(map);
+
+                // Fit bounds to show entire route
+                const allPoints = [userLocation, ...jeepneyWaypoints, destinationLatLng];
+                const bounds = L.latLngBounds(allPoints);
+                map.fitBounds(bounds.pad(0.1));
+            } else {
+                // If no user location, just show route from start to destination's nearest stop
+                const jeepneyStops = destRoute.stops.slice(0, destIndex + 1);
+                const jeepneyWaypoints = jeepneyStops.map(stop => L.latLng(stop.coords[0], stop.coords[1]));
+
+                const jeepneyRoute = L.Routing.control({
+                    waypoints: jeepneyWaypoints,
+                    routeWhileDragging: false,
+                    showAlternatives: false,
+                    fitSelectedRoutes: true,
+                    show: false,
+                    addWaypoints: false,
+                    draggableWaypoints: false,
+                    lineOptions: {
+                        styles: [{ color: destRoute.color, opacity: 0.8, weight: 6 }]
+                    },
+                    createMarker: () => null
+                });
+
+                // Route from last stop to destination
+                const lastStop = jeepneyStops[jeepneyStops.length - 1];
+                const lastStopLatLng = L.latLng(lastStop.coords[0], lastStop.coords[1]);
+
+                const toDestRoute = L.Routing.control({
+                    waypoints: [lastStopLatLng, destinationLatLng],
+                    routeWhileDragging: false,
+                    showAlternatives: false,
+                    fitSelectedRoutes: false,
+                    addWaypoints: false,
+                    draggableWaypoints: false,
+                    lineOptions: {
+                        styles: [{ color: '#FF5733', weight: 4, opacity: 0.8, dashArray: '5,10' }]
+                    },
+                    createMarker: function (i, waypoint, n) {
+                        if (i === 1) {
+                            return L.marker(waypoint.latLng).bindPopup(destinationName);
+                        }
+                        return null;
+                    }
+                });
+
+                currentRouteControl = {
+                    remove: () => {
+                        jeepneyRoute.remove();
+                        toDestRoute.remove();
+                    }
+                };
+
+                jeepneyRoute.addTo(map);
+                toDestRoute.addTo(map);
+
+                // Fit bounds
+                const allPoints = [...jeepneyWaypoints, destinationLatLng];
+                const bounds = L.latLngBounds(allPoints);
+                map.fitBounds(bounds.pad(0.1));
+            }
+        }
+
+        // Route with multiple jeepney transfers from user to destination
+        async function multiRouteToDestination(destinationLatLng, destinationName) {
+            clearMap();
+            allRoutesVisible = false;
+
+            const infoDiv = document.getElementById("travel-time-info");
+            if (infoDiv) {
+                infoDiv.textContent = "Estimated travel time: --";
+            }
+
+            if (!userLocation) {
+                alert("User location not available for multi-route planning.");
+                return;
+            }
+
+            function stopsAreEqual(s1, s2) {
+                return s1.coords[0] === s2.coords[0] && s1.coords[1] === s2.coords[1];
+            }
+
+            function stopKey(stop) {
+                return stop.coords[0] + "," + stop.coords[1];
+            }
+
+            function createJeepneyStopMarker(stop, color, label) {
+                return L.marker(L.latLng(stop.coords[0], stop.coords[1]), {
+                    icon: L.icon({
+                        iconUrl: `https://chart.googleapis.com/chart?chst=d_map_pin_letter&chld=${label}|${color.replace("#", "")}|000000`,
+                        iconSize: [21, 34],
+                        iconAnchor: [10, 34],
+                        popupAnchor: [0, -28]
+                    })
+                }).bindPopup(`${stop.name}`);
+            }
+
+            let nearestUserStop = null, nearestUserStopDist = Infinity;
+            let nearestDestStop = null, nearestDestStopDist = Infinity;
+
+            const allStops = [];
+            Object.entries(jeepneyRoutes).forEach(([key, route]) => {
+                route.stops.forEach(stop => allStops.push({ stop, routeKey: key }));
+            });
+
+            allStops.forEach(({ stop }) => {
+                const distUser = userLocation.distanceTo(L.latLng(stop.coords[0], stop.coords[1]));
+                if (distUser < nearestUserStopDist) {
+                    nearestUserStopDist = distUser;
+                    nearestUserStop = stop;
+                }
+
+                const distDest = destinationLatLng.distanceTo(L.latLng(stop.coords[0], stop.coords[1]));
+                if (distDest < nearestDestStopDist) {
+                    nearestDestStopDist = distDest;
+                    nearestDestStop = stop;
+                }
+            });
+
+            const graph = new Map();
+
+            function addEdge(fromStop, toStop) {
+                const fromKey = stopKey(fromStop);
+                const toKey = stopKey(toStop);
+                const fromLatLng = L.latLng(fromStop.coords[0], fromStop.coords[1]);
+                const toLatLng = L.latLng(toStop.coords[0], toStop.coords[1]);
+                const dist = fromLatLng.distanceTo(toLatLng);
+
+                if (!graph.has(fromKey)) graph.set(fromKey, []);
+                if (!graph.has(toKey)) graph.set(toKey, []);
+
+                graph.get(fromKey).push({ stop: toStop, weight: dist });
+                graph.get(toKey).push({ stop: fromStop, weight: dist });
+            }
+
+            Object.values(jeepneyRoutes).forEach(route => {
+                for (let i = 0; i < route.stops.length - 1; i++) {
+                    addEdge(route.stops[i], route.stops[i + 1]);
+                }
+            });
+
+            function dijkstra(startStop, endStop) {
+                const startKey = stopKey(startStop);
+                const endKey = stopKey(endStop);
+
+                const distances = new Map();
+                const previous = new Map();
+                const queue = new Set();
+
+                graph.forEach((_, key) => {
+                    distances.set(key, Infinity);
+                    previous.set(key, null);
+                    queue.add(key);
+                });
+                distances.set(startKey, 0);
+
+                while (queue.size > 0) {
+                    let currentKey = null;
+                    let smallestDist = Infinity;
+                    for (const key of queue) {
+                        if (distances.get(key) < smallestDist) {
+                            smallestDist = distances.get(key);
+                            currentKey = key;
+                        }
+                    }
+
+                    if (currentKey === endKey) break;
+
+                    queue.delete(currentKey);
+
+                    const neighbors = graph.get(currentKey) || [];
+                    for (const neighbor of neighbors) {
+                        if (!queue.has(stopKey(neighbor.stop))) continue;
+
+                        const altDist = distances.get(currentKey) + neighbor.weight;
+                        const neighborKey = stopKey(neighbor.stop);
+
+                        if (altDist < distances.get(neighborKey)) {
+                            distances.set(neighborKey, altDist);
+                            previous.set(neighborKey, currentKey);
+                        }
+                    }
+                }
+
+                const path = [];
+                let u = endKey;
+                while (u) {
+                    path.unshift(u);
+                    u = previous.get(u);
+                }
+
+                if (path[0] !== startKey) return [];
+
+                return path.map(k => {
+                    const [lat, lng] = k.split(",").map(Number);
+                    return { coords: [lat, lng] };
+                });
+            }
+
+            const shortestPathStops = dijkstra(nearestUserStop, nearestDestStop);
+            if (shortestPathStops.length === 0) {
+                alert("No jeepney route available between your location and destination.");
+                return;
+            }
+
+            function findRouteContainingSegment(stopA, stopB) {
+                return Object.values(jeepneyRoutes).find(route => {
+                    const idxA = route.stops.findIndex(s => stopsAreEqual(s, stopA));
+                    const idxB = route.stops.findIndex(s => stopsAreEqual(s, stopB));
+                    return idxA !== -1 && idxB !== -1 && Math.abs(idxA - idxB) === 1;
+                });
+            }
+
+            const segments = [];
+
+            for (let i = 0; i < shortestPathStops.length - 1; i++) {
+                const stopA = shortestPathStops[i];
+                const stopB = shortestPathStops[i + 1];
+                const route = findRouteContainingSegment(stopA, stopB);
+
+                if (!route) continue;
+
+                if (
+                    segments.length === 0 ||
+                    segments[segments.length - 1].route !== route
+                ) {
+                    segments.push({
+                        route,
+                        startStop: stopA,
+                        endStop: stopB
+                    });
+                } else {
+                    segments[segments.length - 1].endStop = stopB;
+                }
+            }
+
+            const routeControls = [];
+            const stopMarkers = [];
+
+            const userMarker = L.marker(userLocation).addTo(map).bindPopup("Your Location").openPopup();
+            stopMarkers.push(userMarker);
+
+            const firstStopLatLng = L.latLng(shortestPathStops[0].coords[0], shortestPathStops[0].coords[1]);
+            let totalTimeSeconds = 0;
+            const walkingSpeedMps = 1.4;
+
+            if (userLocation.distanceTo(firstStopLatLng) > 20) {
+                const walkDistance = userLocation.distanceTo(firstStopLatLng);
+                const walkTime = walkDistance / walkingSpeedMps;
+                totalTimeSeconds += walkTime;
+
+                const walkStart = L.Routing.control({
+                    waypoints: [userLocation, firstStopLatLng],
+                    routeWhileDragging: false,
+                    addWaypoints: false,
+                    draggableWaypoints: false,
+                    show: false, // HIDE UI BOX
+                    lineOptions: { styles: [{ color: '#FF5733', weight: 4, dashArray: '5,10', opacity: 0.8 }] },
+                    createMarker: () => null
+                }).addTo(map);
+                routeControls.push(walkStart);
+            }
+
+            const jeepneySpeedMps = 5.56;
+
+            segments.forEach(seg => {
+                const startIndex = seg.route.stops.findIndex(s => stopsAreEqual(s, seg.startStop));
+                const endIndex = seg.route.stops.findIndex(s => stopsAreEqual(s, seg.endStop));
+
+                const segmentStops = seg.route.stops.slice(
+                    Math.min(startIndex, endIndex),
+                    Math.max(startIndex, endIndex) + 1
+                );
+
+                const waypoints = segmentStops.map(s => L.latLng(s.coords[0], s.coords[1]));
+
+                let segmentDistance = 0;
+                for (let i = 0; i < segmentStops.length - 1; i++) {
+                    const p1 = L.latLng(segmentStops[i].coords[0], segmentStops[i].coords[1]);
+                    const p2 = L.latLng(segmentStops[i + 1].coords[0], segmentStops[i + 1].coords[1]);
+                    segmentDistance += p1.distanceTo(p2);
+                }
+                const segmentTime = segmentDistance / jeepneySpeedMps;
+                totalTimeSeconds += segmentTime;
+
+                segmentStops.forEach(stop => {
+                    const marker = createJeepneyStopMarker(stop, seg.route.color || "#3388ff", stop.name);
+                    marker.addTo(map);
+                    stopMarkers.push(marker);
+                });
+
+                const jeepneyRouteControl = L.Routing.control({
+                    waypoints,
+                    routeWhileDragging: false,
+                    showAlternatives: false,
+                    addWaypoints: false,
+                    draggableWaypoints: false,
+                    lineOptions: { styles: [{ color: seg.route.color || "#3388ff", weight: 6, opacity: 0.8 }] },
+                    createMarker: () => null
+                }).addTo(map);
+
+                routeControls.push(jeepneyRouteControl);
+            });
+
+            const lastStopCoords = shortestPathStops[shortestPathStops.length - 1].coords;
+            const lastStopLatLng = L.latLng(lastStopCoords[0], lastStopCoords[1]);
+
+            if (lastStopLatLng.distanceTo(destinationLatLng) > 20) {
+                const walkDistance = lastStopLatLng.distanceTo(destinationLatLng);
+                const walkTime = walkDistance / walkingSpeedMps;
+                totalTimeSeconds += walkTime;
+
+                const lastStopMarker = L.marker(lastStopLatLng).addTo(map).bindPopup("Last Jeepney Stop");
+                stopMarkers.push(lastStopMarker);
+
+                const walkEnd = L.Routing.control({
+                    waypoints: [lastStopLatLng, destinationLatLng],
+                    routeWhileDragging: false,
+                    addWaypoints: false,
+                    draggableWaypoints: false,
+                    show: false, // HIDE UI BOX
+                    lineOptions: { styles: [{ color: '#FF5733', weight: 4, dashArray: '5,10', opacity: 0.8 }] },
+                    createMarker: (i, wp) => i === 1 ? L.marker(wp.latLng).bindPopup(destinationName) : null
+                }).addTo(map);
+                routeControls.push(walkEnd);
+            } else {
+                L.marker(destinationLatLng).addTo(map).bindPopup(destinationName).openPopup();
+            }
+
+            const boundsPoints = [
+                userLocation,
+                destinationLatLng,
+                ...shortestPathStops.map(s => L.latLng(s.coords[0], s.coords[1]))
+            ];
+            map.fitBounds(L.latLngBounds(boundsPoints).pad(0.1));
+
+            function formatTime(seconds) {
+                const mins = Math.round(seconds / 60);
+                if (mins < 60) return `${mins} min${mins !== 1 ? 's' : ''}`;
+                const hrs = Math.floor(mins / 60);
+                const remMins = mins % 60;
+                return `${hrs} hr${hrs !== 1 ? 's' : ''} ${remMins} min${remMins !== 1 ? 's' : ''}`;
+            }
+
+            const estimatedTimeStr = formatTime(totalTimeSeconds);
+            if (infoDiv) {
+                infoDiv.textContent = `Estimated travel time: ${estimatedTimeStr}`;
+            }
+
+            currentRouteControl = {
+                remove: () => {
+                    routeControls.forEach(c => c.remove());
+                    stopMarkers.forEach(m => map.removeLayer(m));
+                    if (infoDiv) {
+                        infoDiv.textContent = "Estimated travel time: --";
+                    }
+                }
+            };
+        }
+
+
+
+
+
+
+
+
+
+
+        L.Control.geocoder({
+            defaultMarkGeocode: false,
+            placeholder: 'Search destination...'
+        }).on('markgeocode', function (e) {
+            const location = e.geocode.center;
+            const name = e.geocode.name;
+            multiRouteToDestination(location, name);
+        }).addTo(map);
+
+
+
+        // Build dropdown menu for jeepney routes
+        const routeDropdown = document.getElementById('routeDropdown');
+        Object.keys(jeepneyRoutes).forEach(routeKey => {
+            const route = jeepneyRoutes[routeKey];
+            const routeLink = document.createElement('a');
+            routeLink.href = '#';
+            routeLink.textContent = route.name.toUpperCase();
+            routeLink.style.color = route.color;
+            routeLink.style.fontSize = '11px';
+            routeLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                loadJeepneyRoute(routeKey);
+            });
+            routeDropdown.appendChild(routeLink);
+        });
+
+        // Show all routes button
+        document.getElementById('showAllRoutes').addEventListener('click', showAllRoutes);
+
+        // Load initial route
+        loadJeepneyRoute('route1');
+    </script>
+}
